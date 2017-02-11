@@ -1,5 +1,5 @@
-# r basics (similar to matlab for lecture 2)
-# seis763-02, Spring 2017, Prof Lai
+# R basics (similar to matlab for lecture 2)
+# seis763-02, Spring 2017
 # by josh janzen
 # there is more than 1 way to do these operations (and I'm not saying this is the best way)
 
@@ -53,7 +53,7 @@ stu
 # create 2 x 3 matrix, filled by specified vector
 z <- matrix(c(1,1,1,2,3,4), nrow=2, byrow=T)
 
-# dimensions of t
+# dimensions of matrix
 dim(z)
 
 # transpose matrix
