@@ -1,5 +1,6 @@
 library(caret)
 # import data
+# https://data.police.uk/data/
 list.files()
 setwd("/Users/a149174/UST_GPS/seis_763/ml_test/data/westMidlands/2016-11")
 data1 <- read.csv("2016-11-west-midlands-stop-and-search.csv", head=T, sep=',')
@@ -9,6 +10,10 @@ setwd("/Users/a149174/UST_GPS/seis_763/ml_test/data/westMidlands/2016-09")
 data3 <- read.csv("2016-09-west-midlands-stop-and-search.csv", head=T, sep=',')
 setwd("/Users/a149174/UST_GPS/seis_763/ml_test/data/westMidlands/2016-08")
 data4 <- read.csv("2016-08-west-midlands-stop-and-search.csv", head=T, sep=',')
+setwd("/Users/a149174/UST_GPS/seis_763/ml_test/data/westMidlands/2016-07")
+data5 <- read.csv("2016-07-west-midlands-stop-and-search.csv", head=T, sep=',')
+setwd("/Users/a149174/UST_GPS/seis_763/ml_test/data/westMidlands/2016-06")
+data6 <- read.csv("2016-06-west-midlands-stop-and-search.csv", head=T, sep=',')
 data <- rbind(data1,data2,data3,data4)
 
 for (i in 1:nrow(data)){
@@ -35,7 +40,6 @@ training <- police_data[inTrain,]
 testing <- police_data[-inTrain,]
 summary(testing)
 nrow(testing)
-rowsum(data)
 
 # % of all outcomes which are "Nothing Found".  To determine if adding value
 library(sqldf)
@@ -52,7 +56,7 @@ train_control <- trainControl(method="cv", number=10)
 grid <- expand.grid(.fL=c(0), .usekernel=c(FALSE))
 # train the model
 model <- train(Outcome~.,  data=training, method="LogitBoost", trControl=train_control)
-#model <- train(Outcome~., data=police_data, method="nb", trControl=train_control)
+#model <- train(Outcome~., data=training, method="svmRadial", trControl=train_control)
 # summarize results
 print(model) # 70.6% accuracy
 # prediction
@@ -61,14 +65,22 @@ predictions
 # confusion matrix
 cm_cv <- confusionMatrix(predictions, testing$Outcome)
 cm_cv
-cm_cv$overall
 cm_cv$byClass
+cm_cv$overall
+
+chg_accuracy <- cm_cv$overall[1] - threshold
+if(chg_accuracy > 0.0){
+    print("improved accuracy by ")
+    print(chg_accuracy)
+} else{
+    print("reduced accuracy by ")
+    print(chg_accuracy)
+}
 
 
-
-# final model
+# final model (not using cv)
 #http://machinelearningmastery.com/compare-models-and-select-the-best-using-the-caret-r-package/
-modelFit <- train(Outcome~., data=training, method="LogitBoost")
+#modelFit <- train(Outcome~., data=training, method="LogitBoost")
 modelFit <- train(Outcome~., data=training, method="svmRadial")
 #modelFit <- train(Outcome~., data=training, method="kknn")
 #modelFit <- train(Outcome~., data=training, method="rf")
@@ -79,8 +91,17 @@ predictions <- predict(modelFit, newdata=testing)
 predictions
 # confusion matrix
 cm <- confusionMatrix(predictions, testing$Outcome)
-cm$overall
 cm$byClass
+cm$overall
+
+chg_accuracy <- cm$overall[1] - threshold
+if(chg_accuracy > 0.0){
+    print("improved accuracy by ")
+    print(chg_accuracy)
+} else{
+    print("reduced accuracy by ")
+    print(chg_accuracy)
+}
 
 # http://stackoverflow.com/questions/31138751/roc-curve-from-training-data-in-caret
 install.packages("pROC")
