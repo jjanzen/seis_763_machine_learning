@@ -50,6 +50,9 @@ stu[3,2]
 stu[3,] <- NA
 stu
 
+# empty matrix
+data <- data.frame()
+
 # create 2 x 3 matrix, filled by specified vector
 z <- matrix(c(1,1,1,2,3,4), nrow=2, byrow=T)
 
