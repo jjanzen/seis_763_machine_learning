@@ -1,11 +1,21 @@
 #https://github.com/twitter/AnomalyDetection
+library(sqldf)
+## https://github.com/pablo14/anomaly_detection_post/blob/master/anomaly_detection.R
+library(ggplot2)
+#install.packages("devtools")
+#devtools::install_github("petermeissner/wikipediatrend")
+#devtools::install_github("twitter/AnomalyDetection")
+#install.packages("Rcpp")
+library(AnomalyDetection)
+
 list.files()
 setwd("/Users/a149174/UST_GPS/seis_763/r/seis_763_machine_learning/anomaly_detection/ydata-labeled-time-series-anomalies-v1_0/A2Benchmark")
 
+# adding up files into one df
 data_a2benchmark <- data.frame()
 for (f in list.files()){
     data <- read.csv(f, head=F, sep=',', skip = 1)
-    ?read.csv
+    #?read.csv
     data_a2benchmark <- rbind(data_a2benchmark, data)
 }
 col_headings <- c('ts', 'value', 'anomaly')
@@ -19,37 +29,38 @@ summary(data_a2benchmark)
 ## http://stackoverflow.com/questions/27408131/convert-unix-timestamp-into-datetime-in-r
 data_a2benchmark$ts <- as.POSIXlt(as.numeric(as.character(data_a2benchmark$ts)),origin="1970-01-01",tz="GMT")
 head(data_a2benchmark)
-## Keep only desiered variables (date & page views)
-data_trimmed=data_a2benchmark[,c(1,2)]
+## Plotting benchmark data
+ggplot(data_a2benchmark, aes(x=ts, y=value, color=value)) + geom_line()
 
-data_trimmed[1:10,2]
-data_trimmed[,2]
-raw_data[1:10,2]
+## Keep only desiered variables (date & page views) for modeling
+data_trimmed=data_a2benchmark[,c(1,2)]
 unique(data_trimmed$ts)
 
-help("AnomalyDetectionTs")
+#help("AnomalyDetectionTs")
 # % of all outcomes which are "Nothing Found".  To determine if adding value
-library(sqldf)
-testing_outcome <- sqldf(paste("select ts, sum(value) as value from data_trimmed group by ts order by ts"))
-head(testing_outcome)
+
 # subsetting
 # data_trimmed <- subset(data_trimmed, value > 0)
 vec <- AnomalyDetectionVec(data_trimmed[,2], max_anoms=0.02, period=14200, direction='both', only_last=FALSE, plot=TRUE)
 vec$plot
 vec$anoms
-help("AnomalyDetectionVec")
+#help("AnomalyDetectionVec")
 ## Calculate deviation percentage from the expected value 
-vec$anoms$perc_diff=round(100*(vec$anoms$expected_value-vec$anoms$anoms)/vec$anoms$expected_value)
+#vec$anoms$perc_diff=round(100*(vec$anoms$expected_value-vec$anoms$anoms)/vec$anoms$expected_value)
 
-## Plot anomalies table
+## anomalies table
 anomaly_table=vec$anoms
 names(anomaly_table) <- c("table_index", "anoms")
 head(anomaly_table)
 tail(anomaly_table)
 
+# subsetting by variables
 benchmark_data <- data_a2benchmark[c('value', 'anomaly')]
 benchmark_data$col_id <- seq.int(nrow(benchmark_data))
 tail(benchmark_data,100)
+
+nrow(benchmark_data)
+# 142100
 
 # anomalies in training data
 training_anomalies <- sqldf(paste("select count(b.col_id) from benchmark_data b where anomaly == 1"))
@@ -69,18 +80,15 @@ tp_rate <- tp/training_anomalies
 tp_rate
 
 # not detected anomailes
-fn <- training_anomalies - detected_anomalies
+fn <- training_anomalies - tp
 fn
 fn_rate <- fn/training_anomalies
 fn_rate
 
-fp <- (predicted_anomalies - detected_anomalies)
+fp <- (predicted_anomalies - tp)
 fp
 fp_rate <- fp/training_non_anomalies
 fp_rate
-
-nrow(benchmark_data)
-# 142100
 
 tn_rate <- 1-fp_rate
 tn <- tn_rate * training_non_anomalies
@@ -92,21 +100,28 @@ balanced_accurancy
 prevelance <- training_anomalies/nrow(benchmark_data)
 prevelance
 
-res = AnomalyDetectionTs(raw_data[1:100,], max_anoms=0.02, direction='both', plot=TRUE)
-res$plot
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+########################### end - below is notes on github example code ###########
+
+#res = AnomalyDetectionTs(raw_data[1:100,], max_anoms=0.02, direction='both', plot=TRUE)
+#res$plot
 
 
 class(testing_outcome[,2])
 class(raw_data[,2])
-## https://github.com/pablo14/anomaly_detection_post/blob/master/anomaly_detection.R
-library(ggplot2)
-#install.packages("devtools")
-#devtools::install_github("petermeissner/wikipediatrend")
-devtools::install_github("twitter/AnomalyDetection")
-install.packages("Rcpp")
-library(AnomalyDetection)
-## Plotting data
-ggplot(data_a2benchmark, aes(x=ts, y=value, color=value)) + geom_line()
 
 
 head(data_trimmed[1:10,1:2])
