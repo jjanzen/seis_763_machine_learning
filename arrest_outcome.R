@@ -85,6 +85,7 @@ modelFit <- train(Outcome~., data=training, method="svmRadial")
 #modelFit <- train(Outcome~., data=training, method="kknn")
 #modelFit <- train(Outcome~., data=training, method="rf")
 modelFit
+summary(modelFit)
 modelFit$finalModel
 # prediction
 predictions <- predict(modelFit, newdata=testing)

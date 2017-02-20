@@ -83,3 +83,51 @@ for (year in 1:length(years)){
 theta <- matrix(c(0,4), ncol=1)
 X <- matrix(c(1,1,1,1,2,3), ncol=3, nrow=2, byrow=T)
 t(theta) %*% X
+
+# matrix mutiplication slide 6 from Linear Regression
+theta <- matrix(c(0,4), ncol=1)
+X <- matrix(c(1,1,1,1,2,3), ncol=3, nrow=2, byrow=T)
+t(theta) %*% X
+
+# example linear regression
+X <- c(1,2,3)
+Y <- c(4,8,12)
+
+reg_model = lm(Y ~ X)
+reg_model
+summary(reg_model)
+plot(X,Y)
+
+# example linear regression
+X1 <- c(1,2,3)
+Y <- c(5,8,10)
+X2 <- X1^2 + c(10,10,10)
+
+df_model <- as.data.frame(cbind(X1,X2,Y))
+df_model 
+class(df_model)
+reg_model <- lm(Y ~ X1 + X2, data=df_model)
+reg_model
+summary(reg_model)
+plot(X_new,Y)
+plot(X,Y)
+predictions <- predict(reg_model, newdata=c(4,5), interval="predict")
+predictions
+
+summary(reg_model)$coefficients[,1]
+
+# exp linear regression polynomial
+poly_model <- lm(Y ~ poly(X,2))
+summary(poly_model)
+
+
+## Predictions
+x <- rnorm(15)
+x
+y <- x + rnorm(15)
+y
+predict(lm(y ~ x))
+summary(lm(y~x))
+new <- data.frame(x = seq(-3, 3, 0.5))
+new
+predict(lm(y ~ x), new, se.fit = TRUE)

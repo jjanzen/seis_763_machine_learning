@@ -1,4 +1,6 @@
 #https://github.com/twitter/AnomalyDetection
+#https://blog.twitter.com/2015/introducing-practical-and-robust-anomaly-detection-in-a-time-series
+#https://research.yahoo.com/news/announcing-benchmark-dataset-time-series-anomaly-detection
 library(sqldf)
 ## https://github.com/pablo14/anomaly_detection_post/blob/master/anomaly_detection.R
 library(ggplot2)
