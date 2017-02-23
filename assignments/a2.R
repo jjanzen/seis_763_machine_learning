@@ -31,6 +31,7 @@ summary(model)$coefficients[,1:2]
 #Smoker                                 9.67308711  1.04590413
 #Weight                                -0.01341834  0.05837056
 
+# http://www.theanalysisfactor.com/interpreting-regression-coefficients/
 # 5: Interpret Thetas
 ## For continuous predictors, if all other variables are held constant, the larger absolute value of the theta will have a larger average impact to predicting Systolic.
 ## For continuous predictors, if all other variables are held constaint, 1 unit of a theta will result in that thetas value change in Systolic. 
@@ -49,13 +50,16 @@ lev
 head(model.matrix(model))
 plot(lev)
 # sort with give values sorted with highest leverage 
-sort(lev, decreasing=T)
+head(sort(lev, decreasing=T))
 # order will provide the index of the obs.  1: obs 75, 2: 93
-order(lev, decreasing=T)
+head(order(lev, decreasing=T))
 
 # cooks (measures the effector of deleting a given observation)
 plot(cooks.distance(model))
-sort(cooks.distance(model), decreasing=T)[1]
+# sort with give values sorted with highest distance
+head(sort(cooks.distance(model), decreasing=T))
+# order will provide the index of the obs.  1: obs 93, 2: 13...
+head(order(cooks.distance(model), decreasing=T))
 # point 93 with cook's distance of 0.135
 
 # residual plots

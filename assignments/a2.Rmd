@@ -1,0 +1,116 @@
+---
+title: "Assignement #2 SEIS 763_02"
+author: "Josh Janzen"
+date: "2/23/2017"
+output: html_document
+---
+</br> </br>
+
+#### 1 & 2: read in data
+```{r setup, echo=TRUE, message=FALSE}
+library(car) # companian applied regression package
+# unable to load from C:\tmp as that directory doesn't exist on Mac
+setwd("/Users/a149174/UST_GPS/seis_763/r/seis_763_machine_learning/assignments")
+
+data <- read.csv("patients.csv", head=T, sep=',', skip = 0)
+```
+
+```{r explore, echo=FALSE, message=FALSE, eval=FALSE}
+pairs(~ Systolic + Age + Gender + Height + Location + SelfAssessedHealthStatus + Smoker + Weight, data=data)
+pairs(~ Systolic + Weight + Smoker, data=data)
+```
+
+#### 3: Build Linear Model
+```{r model, echo=TRUE, message=FALSE}
+model <- lm(Systolic ~ Age + Gender + Height + Location + SelfAssessedHealthStatus + Smoker + Weight, data=data)
+```
+
+
+#### 4: Thetas
+```{r thetas, echo=FALSE, message=FALSE}
+#summary(model)
+summary(model)$coefficients[,1:2]
+```
+
+#### 5: Theta Interpretation
+
+* For continuous predictors (Age, Height, Weight), if all other variables are held constaint, 1 unit of a theta will result in that thetas value change in Systolic. 
+
+* For categorical predictors (Gender, Location, SelfAssessedHealthStatus, Smoker), if all other variables are held constaint, a change between in Y will be average difference accross category values.
+
+#### 6: Identifying Outlier
+
+First, I want to look at Leverage, by plotting it, and then sorting for highest values
+```{r leverage, echno=T}
+lev <- hat(model.matrix(model))
+plot(lev)
+
+# sort with give values sorted with highest leverage 
+head(sort(lev, decreasing=T))
+# order will provide the index of the obs.  1: obs 75, 2: 93..
+head(order(lev, decreasing=T))
+```
+
+Next, I want to look at Cook's Distance, by plotting it, and then sorting for highest values
+```{r cooks, echno=T}
+# Cook's Distance plot
+cutoff <- 4/((nrow(model)-length(model$coefficients)-2)) 
+plot(model, which=4, cook.levels=cutoff)
+
+# sort with give values sorted with highest distance
+head(sort(cooks.distance(model), decreasing=T))
+# order will provide the index of the obs.  1: obs 93, 2: 13...
+head(order(cooks.distance(model), decreasing=T))
+```
+
+Next, Normal Probability of Residuals
+```{r prob_residuals, echo=T}
+# Normality of Residuals
+qqPlot(model, main="QQ Plot")
+```
+
+#### Based that observation 93 is 2nd in Leverage and 1st in Cook's Distance, I'd recommend removing
+</br> </br>
+
+#### 7: Identifying Useless Features (Predictor)
+
+Added Variable Plots
+```{r added_variable_plots, echo=T}
+# added variable plots (if line is near horizontal, then the variable is insignificant) 
+avPlots(model)
+```
+
+Weight has flattest line for leverage, could be a good candidate for removal
+
+
+Model Summary
+```{r residual_plots, echo=F}
+summary(model)
+```
+
+Weight has heighest P-value, then Gender, Location
+
+#### Based on this, Recommend removing Weight
+</br></br>
+
+#### Extra: Re-run model removed outlier, to see change in Adj R-Squared verus original model
+```{r new_model_outlier, echo=F}
+# model remove outlier
+model_no_outlier <- lm(Systolic ~ Age + Gender + Height + Location + SelfAssessedHealthStatus + Smoker + Weight, data=data[-93,])
+
+# change in adj r-squared
+summary(model_no_outlier)$adj.r.squared - summary(model)$adj.r.squared
+```
+</br></br>
+
+#### Extra: Re-run model removed outlier and Weight, to see change in Adj R-Squared verus just removing outlier
+```{r new_model_weight, echo=F}
+# model remove outlier and weight
+model_no_outlier_weight <- lm(Systolic ~ Age + Gender + Height + Location + SelfAssessedHealthStatus + Smoker, data=data[-93,])
+
+# change in adj r-squared
+summary(model_no_outlier_weight)$adj.r.squared - summary(model_no_outlier)$adj.r.squared
+```
+</br></br>
+
+#### Both removing outlier and Weight increased Adj R-Squared
