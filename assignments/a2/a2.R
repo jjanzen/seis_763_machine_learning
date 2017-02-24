@@ -3,7 +3,7 @@ print("SEIS-763-02")
 print("Assign #2")
 
 getwd()
-setwd("/Users/a149174/UST_GPS/seis_763/r/seis_763_machine_learning/assignments")
+setwd("/Users/a149174/UST_GPS/seis_763/r/seis_763_machine_learning/assignments/a2")
 #library(caret)
 
 # 1 & 2: read in data

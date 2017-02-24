@@ -87,7 +87,15 @@ t(theta) %*% X
 # matrix mutiplication slide 6 from Linear Regression
 theta <- matrix(c(0,4), ncol=1)
 X <- matrix(c(1,1,1,1,2,3), ncol=3, nrow=2, byrow=T)
+
+# calculate y-hat aka predictions
 t(theta) %*% X
+
+#sum(t(theta) %*% X)
+
+t(theta)
+theta
+X
 
 # example linear regression
 X <- c(1,2,3)
@@ -109,10 +117,13 @@ class(df_model)
 reg_model <- lm(Y ~ X1 + X2, data=df_model)
 reg_model
 summary(reg_model)
-plot(X_new,Y)
-plot(X,Y)
-predictions <- predict(reg_model, newdata=c(4,5), interval="predict")
+plot(X1,Y)
+plot(X2,Y)
+new_data_test <- data.frame(X1=2, X2=15)
+predictions <- predict(reg_model, newdata=new_data_test, interval="predict")
 predictions
+#fit lwr upr
+#1 7.5 NaN NaN
 
 summary(reg_model)$coefficients[,1]
 

@@ -41,7 +41,7 @@ summary(model)$coefficients[,1:2]
 #### 6: Identifying Outlier
 
 First, I want to look at Leverage, by plotting it, and then sorting for highest values
-```{r leverage, echno=T}
+```{r leverage, echo=T}
 lev <- hat(model.matrix(model))
 plot(lev)
 
