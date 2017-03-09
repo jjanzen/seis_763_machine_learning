@@ -1,0 +1,173 @@
+---
+title: "Assignement #3 SEIS 763_02"
+author: "Josh Janzen"
+date: "3/1/2017"
+output: html_document
+---
+</br> </br>
+
+#### 1 & 2: read in data
+```{r setup, echo=TRUE, message=FALSE}
+library(car) # companian applied regression package
+# unable to load from C:\tmp as that directory doesn't exist on Mac
+setwd("/Users/a149174/UST_GPS/seis_763/r/seis_763_machine_learning/assignments/a3")
+
+data <- read.csv("patients.csv", head=T, sep=',', skip = 0)
+```
+
+```{r explore, echo=FALSE, message=FALSE, eval=FALSE}
+pairs(~ Systolic + Age + Gender + Height + Location + SelfAssessedHealthStatus + Smoker + Weight, data=data)
+pairs(~ Systolic + Weight + Smoker, data=data)
+
+```
+
+#### 3: Build Linear Model
+```{r model, echo=TRUE, message=FALSE}
+model <- lm(Systolic ~ Age + Gender + Height + Location + SelfAssessedHealthStatus + Smoker + Weight, data=data)
+# http://stats.stackexchange.com/questions/156098/cross-validating-lasso-regression-in-r/156301
+#http://stats.stackexchange.com/questions/188753/lasso-regression-for-predicting-continuous-variable-variable-selection
+# Load data set
+head(data)
+library(glmnet)
+age     <- c(4, 8, 7, 12, 6, 9, 10, 14, 7) 
+gender  <- as.factor(c(1, 0, 1, 1, 1, 0, 1, 0, 0))
+bmi_p   <- c(0.86, 0.45, 0.99, 0.84, 0.85, 0.67, 0.91, 0.29, 0.88) 
+m_edu   <- as.factor(c(0, 1, 1, 2, 2, 3, 2, 0, 1))
+p_edu   <- as.factor(c(0, 2, 2, 2, 2, 3, 2, 0, 0))
+f_color <- as.factor(c("blue", "blue", "yellow", "red", "red", "yellow", 
+                       "yellow", "red", "yellow"))
+asthma <- c(1, 1, 0, 1, 0, 0, 0, 1, 1)
+xfactors <- model.matrix(asthma ~ gender + m_edu + p_edu + f_color)[, -1]
+x <- as.matrix(data.frame(age, bmi_p, xfactors))
+head(x)
+# Note alpha=1 for lasso only and can blend with ridge penalty down to
+# alpha=0 ridge only.
+glmmod <- glmnet(x, y=as.factor(asthma), alpha=1, family="binomial")
+# Plot variable coefficients vs. shrinkage parameter lambda.
+plot(glmmod, xvar="lambda")
+
+sys_factor <- as.factor(data$Systolic)
+
+drops <- c("Systolic")
+data[ , !(names(data) %in% drops)]
+
+# works
+head(data)
+x_new_factors <- model.matrix(data$Systolic ~ data$Age + data$Weight + data$Height + data$Smoker + data$Gender + data$Location + data$SelfAssessedHealthStatus)
+x_new <- as.matrix(data.frame(x_new_factors))
+head(x_new)
+head(x)
+glmmod <- glmnet(x_new, y=as.factor(data$Systolic), alpha=1, family="multinomial")
+plot(glmmod, xvar="lambda")
+# Add a legend
+#legend(2000, 9.5, legend=c("Line 1", "Line 2"),
+#       col=c("red", "blue"), lty=1:2, cex=0.8)
+coef(glmmod, glmmod$lambda.1se)
+# end works
+
+
+mod_cv <- cv.glmnet(x=x, y=y, family='binomial')
+mod_cv <- cv.glmnet(x_new, y=as.factor(data$Systolic), alpha=1, family="multinomial")
+mod_cv$lambda.1se
+
+coef(mod_cv, mod_cv$lambda.1se)
+                     1
+(Intercept)  5.6971598
+cyl         -0.9822704
+
+mod_cv$lambda.min
+
+coef(mod_cv, mod_cv$lambda.min)
+
+
+```
+
+
+#### 4: Thetas
+```{r thetas, echo=FALSE, message=FALSE}
+#summary(model)
+summary(model)$coefficients[,1:2]
+```
+
+#### 5: Theta Interpretation
+
+* For continuous predictors (Age, Height, Weight), if all other variables are held constaint, 1 unit of a theta will result in that thetas value change in Systolic. 
+
+* For categorical predictors (Gender, Location, SelfAssessedHealthStatus, Smoker), if all other variables are held constaint, a change between in Y will be average difference accross category values.
+
+#### 6: Identifying Outlier
+
+First, I want to look at Leverage, by plotting it, and then sorting for highest values
+```{r leverage, echo=T}
+lev <- hat(model.matrix(model))
+plot(lev)
+
+# sort with give values sorted with highest leverage 
+head(sort(lev, decreasing=T))
+# order will provide the index of the obs.  1: obs 75, 2: 93..
+head(order(lev, decreasing=T))
+```
+
+Next, I want to look at Cook's Distance, by plotting it, and then sorting for highest values
+```{r cooks, echno=T}
+# Cook's Distance plot
+cutoff <- 4/((nrow(model)-length(model$coefficients)-2)) 
+plot(model, which=4, cook.levels=cutoff)
+
+# sort with give values sorted with highest distance
+head(sort(cooks.distance(model), decreasing=T))
+# order will provide the index of the obs.  1: obs 93, 2: 13...
+head(order(cooks.distance(model), decreasing=T))
+```
+
+Next, Normal Probability of Residuals
+```{r prob_residuals, echo=T}
+# Normality of Residuals
+qqPlot(model, main="QQ Plot")
+```
+
+#### Based that observation 93 is 2nd in Leverage and 1st in Cook's Distance, I'd recommend removing
+</br> </br>
+
+#### 7: Identifying Useless Features (Predictor)
+
+Added Variable Plots
+```{r added_variable_plots, echo=T}
+# added variable plots (if line is near horizontal, then the variable is insignificant) 
+avPlots(model)
+```
+
+Weight has flattest line for leverage, could be a good candidate for removal
+
+
+Model Summary
+```{r residual_plots, echo=F}
+summary(model)
+```
+
+Weight has heighest P-value, then Gender, Location
+
+#### Based on this, Recommend removing Weight
+</br></br>
+
+#### Extra: Re-run model removed outlier, to see change in Adj R-Squared verus original model
+```{r new_model_outlier, echo=F}
+# model remove outlier
+model_no_outlier <- lm(Systolic ~ Age + Gender + Height + Location + SelfAssessedHealthStatus + Smoker + Weight, data=data[-93,])
+
+# change in adj r-squared
+summary(model_no_outlier)$adj.r.squared - summary(model)$adj.r.squared
+```
+</br></br>
+
+#### Extra: Re-run model removed outlier and Weight, to see change in Adj R-Squared verus just removing outlier
+```{r new_model_weight, echo=F}
+# model remove outlier and weight
+model_no_outlier_weight <- lm(Systolic ~ Age + Gender + Height + Location + SelfAssessedHealthStatus + Smoker, data=data[-93,])
+
+# change in adj r-squared
+summary(model_no_outlier_weight)$adj.r.squared - summary(model_no_outlier)$adj.r.squared
+```
+</br></br>
+
+#### Both removing outlier and Weight increased Adj R-Squared

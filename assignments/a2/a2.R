@@ -123,6 +123,23 @@ model_no_outlier_weight <- lm(Systolic ~ Age + Gender + Height + Location + Self
 
 # change in adj r-squared
 summary(model_no_outlier_weight)$adj.r.squared - summary(model_no_outlier)$adj.r.squared
+summary(model_no_outlier_weight)
+
+#generate z-scores for variable A using the scale() function
+scale(data$Age, center = TRUE, scale = TRUE)
+mean(scale(data$Age))
+
+data_scaled <- data
+data_scaled$Age <- scale(data$Age, center = TRUE, scale = TRUE)
+data_scaled$Weight <- scale(data$Weight, center = TRUE, scale = TRUE)
+head(data_scaled$Age)
+head(data$Age)
+
+model_scaled <- lm(Systolic ~ scale(Age) + Gender + scale(Height) + Location + SelfAssessedHealthStatus + Smoker, data=data[-93,])
+summary(model_scaled)
+
+
+
 
 
 

@@ -1,0 +1,626 @@
+---
+title: "Time Series"
+author: "jjanzen"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+---
+
+<style>
+  table {
+     max-width: 95%;
+     border: 1px solid #ccc;
+  }
+   
+  th {
+    padding: 10px;
+  }
+   
+  td {
+    padding: 2px 10px 2px 10px;
+  }
+</style>
+
+
+
+
+# Synopsis
+
+This is a data set looking at the visits, orders, and revenue from dotcom broken down by whether it happened on a large
+or small screen device.
+
+This is an example where we will:
+
+* Load the data
+* Validate the data
+* Forecast a particular data series.
+
+
+
+# Setup and data load
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+options(width = 180)
+
+suppressPackageStartupMessages(library(plyr))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(scales))
+suppressPackageStartupMessages(library(tidyr))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(xtable))
+suppressPackageStartupMessages(library(stringr))
+suppressPackageStartupMessages(library(forecast))
+suppressPackageStartupMessages(library(xts))
+suppressPackageStartupMessages(library(knitr))
+opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE, fig.width=12, fig.height=9)
+```
+
+```{r}
+  #### data directory
+setwd("/Users/a149174/UST_GPS/seis_763/r/seis_763_machine_learning/time_series")
+  #### Load data
+datl <- read.csv("dat-all-long.csv", stringsAsFactors=FALSE) %>%
+    mutate(dt = as.Date(dt)) %>%
+    tbl_df()
+head(datl)
+class(datl)
+```
+
+# Data validation
+
+It's important have a good idea of what you have in your actual data set.  To this end, you should do some reasonable diagnostics
+on your data so that you are sure that you have what you are expecting.  We do that below:
+
+
+```{r}
+  #### What does the top of the data look like?
+datl %>% print()
+
+  #### What does the end of your dataset look like?
+datl %>% tail()
+
+  ####
+  #### Date (dt) diagnostics
+  ####
+
+  ### Beginning/end of date range
+summary(datl$dt)
+
+  ### How many unique date values do I have in the dataset?
+datl$dt %>% unique() %>% length()
+
+  ### I expect that the dates are contiguous between the min and max value.  Are they?
+  ### The below statement will return dates that are not between the min and max values in the data.
+  ### If nothing is returned, all dates are present.
+setdiff(
+  seq.Date(from=min(datl$dt), to=max(datl$dt), by=1) # Generate a sequence of dates between beginning and end of data.
+  , datl$dt %>% unique()) # Compare to dates in data
+
+  ### For each date, I expect the same number of rows, or more specifically unique key (k) values
+  ### This code will count how many distinct k-value combinations are in the data.  The result:
+  ###   6
+  ### 966
+  ### Means that: 966 distinct values (all of them) each had 6 unique values of k.
+datl %>%
+  group_by(dt) %>%
+  summarise(n_k=n_distinct(k)) %>%
+  ungroup() %>%
+  {table(.$n_k)}
+
+
+  ####
+  #### key (k) values
+  ####
+
+  ### What are the unique keys in column k?
+datl$k %>% unique()
+
+
+  ####
+  #### Do we have any rows that have missing data?
+  ####
+
+  ### It is nice to know if any data has missing values in the cell.  Here is a quick way to check:
+  ### If all cells have data, this will return no rows.  It will return any row that has a missing value in
+  ### any of the columns.
+datl[!complete.cases(datl),]
+
+  ####
+  #### Do the values (v) have the ranges you expect?
+  ####
+
+d_ply(datl, ~ k, function(df) {
+  cat("\n----------\n")
+  cat("key value: ", df$k %>% unique(), "\n")
+  summary(df) %>% print()
+})
+
+  ####
+  #### Plot the data
+  ####
+
+  ### Plotting just helps you find any anomalies that might just show up visually.
+p <- ggplot(datl, aes(dt, v)) +
+  facet_grid( k ~ ., scale="free_y" ) +
+  geom_line() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    strip.text.y = element_text(angle = 0)) +
+  scale_x_date(breaks=date_breaks("month")) +
+  xlab("Date") +
+  scale_y_continuous(labels=comma) +
+  ylab("Metric") +
+  ggtitle("Metric vs. Date, facet Metric")
+print(p)
+```
+
+
+
+
+# Data Forecasting
+
+A forecast of `sm.visits` will be made.  The question arises as to what is the best way to model a forecast on this.  The approach we will
+adopt here is that the most stable time series to forecast is the combined visits ( `all.visits` = `sm.visits` + `lg.visits`), and then
+forecast the ratio of `sm.visits`:`all.visits`, and multiply the two forecasts.
+
+## Data prep
+
+In order to do this, we simplify our dataset by keeping only the visits data, and by calculating the `all.visits` column.
+
+```{r}
+  #### Create a dataset we want.
+datv <- datl %>%
+  filter(str_detect(k, "visits")) %>% # Keep only metrics pertaining to visits
+  spread(k, v) %>% # Convert from long to wide format of data, so we have 1 dt value per row, and the metrics as separate columns
+  mutate(all.visits = sm.visits + lg.visits) %>% # Easy compute of all.visits
+  mutate(sm2all = sm.visits / all.visits) # Get small to all visits ratio
+
+  #### Check the data form out
+datv %>% print()
+
+  #### Look at the data we just generated
+datt <- datv %>% select(dt, all.visits, sm2all) %>% gather(k, v, -dt)
+p <- ggplot(datt, aes(dt, v)) +
+  facet_grid( k ~ ., scale="free_y" ) +
+  geom_line() +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    strip.text.y = element_text(angle = 0)) +
+  scale_x_date(breaks=date_breaks("month")) +
+  xlab("Date") +
+  scale_y_continuous(labels=comma) +
+  ylab("Metric") +
+  ggtitle("Metric vs. Date, facet Metric")
+print(p)
+```
+
+`all.visits` looks reasonable.
+
+`sm2all` appears to have some anomalies out around 2015-08-01 and 2015-09-15.  After talking with Rachel Wright, those are dates where 
+the way that small view visits had changes to the way they were reported.  It seems to have been reflected in the data.  It is a bit hard
+to see this effect in the raw data, but is somewhat easier to see in the ratio `sm2all`.
+
+These level jumps can make forecasting hard.  The assumption is that if the latest data adjustment is the correct data, the previous data
+is inflated.  How do we deal with this when making forecasts, if our forecasts depend on historic data?  We'll discuss further below.
+
+
+
+## Forecast all.visits
+
+One of the issues with this problem now is that ranges of the data are inflated.  How do we deal with this inflated data when forecasting
+`all.visits`?
+
+There are a few options, such as:
+
+* Forecast only off the last good data.
+    + Pro: it should be accurate data
+    + Con that is a short amount of data.
+
+* Assume that the realtive growth only over the longer (but inflated) timeperiod still reflects the growth trends and that a
+model off of that timeperiod would still accurately capture the growth.  And then forecast from recent data based on a model
+created from the historic, inflated, but consistent data.
+    + Pro: deals with forecasting on data with no discontinuities (level jumps).
+    + Con: doesn't use the most recent history.
+    + Con: Linear models can't use this method.
+
+* Forecast using a model that can handle level jumps in the data
+    + Pro: can use all data.
+    + Con: A more complex model to handle and explain.  For instance, a linear model does not do this.
+
+But we will try some examples and defer decision to the end.
+
+### A linear model of all.visits on dt
+
+This is a naive and model which will fail, but I want to perform it for illustrative purposes.
+```{r}
+  #### Fit the model
+allvisits_lmmod_v_dt <- lm(all.visits ~ dt, data=datv)
+summary(allvisits_lmmod_v_dt)
+
+  #### Inspect the outcome fitted to real data
+  ### Bind forecast to orginal fitted data
+# josh
+#dat_allvisits_fcst <- bind_cols(datv, forecast(allvisits_lmmod_v_dt, datv) %>% as.data.frame())
+
+dat_allvisits_fcst <- cbind(datv, forecast(allvisits_lmmod_v_dt, datv) %>% as.data.frame())
+# end josh
+
+  ### Plot it, vs. time
+p <- ggplot(dat_allvisits_fcst, aes(dt)) +
+  geom_ribbon(aes(ymin=`Lo 95`, ymax=`Hi 95`), alpha=0.3, fill="orange") +
+  geom_point(aes(y=all.visits, color="Observed")) +
+  geom_line(aes(y=`Point Forecast`, color="Fitted")) +
+  scale_colour_manual("", 
+                        values = c("Observed"="black"
+                                   ,"Fitted"="red")) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    strip.text.y = element_text(angle = 0)) +
+  scale_x_date(breaks=date_breaks("month")) +
+  xlab("Date") +
+  scale_y_continuous(labels=comma) +
+  ylab("Visits") +
+  ggtitle("all.visits, Observed and Fitted vs. Date\nall.visits ~ dt + 1\nForecast\n95% prediction intervals")
+print(p)
+```
+
+We know we can do better than this just by trying to predict the current year based on previous year.  This YoY method though will have points
+where it will suffer from the jumps in levels.  We will do it and show what happens.
+
+
+
+### A linear model of all.visits on all.visits of previous year.
+
+As stated, it may make more sense to predict this year's `all.visits` based on last year's value.  A data set with dates shifted needs to be
+made in order for that to happen.  Below, we make the shifted data set and construct a linear model based off of it.
+
+```{r, eval=F, echo=F}
+# josh issue here
+  #### Note that we need to shift by 364, not 365, in order to line up the days of the week with each other, not just
+  #### a year back (e.g., Thanksgiving 2014 was Nov. 28, for 2015, it was Nov. 27.  To get those days to align,
+  #### you need to shift by 364 days.)
+datvl <- datv %>%
+  full_join(datv %>% select(dt, all.visits) %>% transmute(dt = dt + 364, all.visits.lag = all.visits), "dt")
+
+  #### Fit model, and constrain to where we have values for both visits and lagvisits.
+datvl_train <- datvl %>%
+  filter(!is.na(all.visits), !is.na(all.visits.lag))
+
+allvisits_lmmod_v_lagv <- lm(all.visits ~ all.visits.lag
+                             , data=datvl_train)
+
+summary(allvisits_lmmod_v_lagv)
+
+
+
+  #### Inspect the outcome fitted to real data
+  ### Bind forecast to orginal fitted data
+dat_allvisits_v_lagv_fcst <- bind_cols(datvl_train, forecast(allvisits_lmmod_v_lagv, datvl_train) %>% as.data.frame())
+
+  ### Plot it, vs. time
+p <- ggplot(dat_allvisits_v_lagv_fcst, aes(dt)) +
+  geom_ribbon(aes(ymin=`Lo 95`, ymax=`Hi 95`), alpha=0.3, fill="orange") +
+  geom_point(aes(y=all.visits, color="Observed")) +
+  geom_line(aes(y=`Point Forecast`, color="Fitted")) +
+  scale_colour_manual("", 
+                        values = c("Observed"="black"
+                                   ,"Fitted"="red")) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    strip.text.y = element_text(angle = 0)) +
+  scale_x_date(breaks=date_breaks("month")) +
+  xlab("Date") +
+  scale_y_continuous(labels=comma) +
+  ylab("Visits") +
+  ggtitle("all.visits, Observed and Fitted vs. Date\nall.visits ~ all.visits.lag + 1\nForecast\n95% prediction intervals")
+print(p)
+```
+
+So, this looks a lot more realistic.  You can see some issues though:
+
+* You can see the fit not working so well where the level adjusts are happening in 2015-08 and 2015-09.
+
+The question is: *Is this good enough?*
+
+For purposes of being complete, it makes sense to look at the predicted values vs. the regressor values, taking out the time dependence.  That graph is here:
+
+```{r, eval=F, echo=F}
+  ### Plot it, observed and fitted vs. regressor (all.visits.lag)
+p <- ggplot(dat_allvisits_v_lagv_fcst, aes(all.visits.lag)) +
+  geom_ribbon(aes(ymin=`Lo 95`, ymax=`Hi 95`), alpha=0.3, fill="orange") +
+  geom_point(aes(y=all.visits, color="Observed")) +
+  geom_line(aes(y=`Point Forecast`, color="Fitted")) +
+  scale_colour_manual("", 
+                        values = c("Observed"="black"
+                                   ,"Fitted"="red")) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    strip.text.y = element_text(angle = 0)) +
+  scale_x_continuous(labels=comma) +
+  xlab("all.visits.lag") +
+  scale_y_continuous(labels=comma) +
+  ylab("all.visits") +
+  ggtitle("all.visits, Observed and Fitted vs. Date\nall.visits ~ all.visits.lag + 1\nForecast\n95% prediction intervals")
+print(p)
+```
+
+
+
+### A Holt-Winters model of all.visits
+
+```{r}
+# josh start again
+  #### As with the linear model of last year's visits, we want the freqency here to be 364
+  #### in order to align the days of the week.
+ts_train <- ts(datv, frequency=364)
+
+  #### Create model
+allvisits_hwmod <- HoltWinters(ts_train[,4], seasonal = "multiplicative")
+# hwallmod allvisits_hwmod HoltWinters(ts_train[,2], gamma = FALSE)
+# allvisits_hwmod %>% print()
+
+  #### Put together fitted and observed
+
+  ### Alternate way of assembling, deprecate  d
+# hwfcst <- forecast(allvisits_hwmod)
+# dat_hw_fitobs <- cbind(dt = ts_train[,"dt"], all.visits = ts_train[,"all.visits"], fitted = hwfcst$fitted) %>%
+#   as.data.frame() %>%
+#   mutate(dt = as.Date(dt)) %>%
+#   tbl_df()
+# dat_hw_fitobs %>% head()
+
+dat_hw_fitobs <- cbind(ts_train, fitted(allvisits_hwmod)) %>%
+  as.data.frame() %>%
+  select(dt=ts_train.dt, all.visits = ts_train.all.visits, fitted = `fitted(allvisits_hwmod).xhat`) %>%
+  mutate(dt = as.Date(dt)) %>%
+  tbl_df()
+
+  ### Plot it, observed and fitted vs. regressor (all.visits.lag)
+p <- ggplot(dat_hw_fitobs, aes(dt)) +
+  geom_point(aes(y=all.visits, color="Observed")) +
+  geom_line(aes(y=fitted, color="Fitted")) +
+  scale_colour_manual("", 
+                        values = c("Observed"="black"
+                                   ,"Fitted"="red")) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    strip.text.y = element_text(angle = 0)) +
+  scale_x_date(breaks=date_breaks("month")) +
+  xlab("Date") +
+  scale_y_continuous(labels=comma) +
+  ylab("all.visits") +
+  ggtitle("all.visits, Observed and Fitted vs. Date\nHolt-Winters\nForecast")
+print(p)
+```
+
+This does better, just by visual inspection, than the linear model. Note that:
+
+*Holt-Winters gains its advantage by updating based on the previous observation in time, but the linear model fits everything all at once.*
+
+This means that Holt-Winters can be responsive to changes in level in ways that the straight "linear regression on history" cannot be.
+
+So, is Holt-Winters better here?  I would say probably, based on the assumption that future predictions will look like past ones, but
+have to have their level adjusted.  This is up for debate however with those with business domain knowledge.
+
+
+
+
+
+### Forecast: Holt-Winters model
+
+Let's forecast `all.visits` based on the Holt-Winters model.
+
+```{r}
+  #### 90-day forecast
+allvisits_fcst <- forecast(allvisits_hwmod, h=90)
+
+  #### Assemble the forecast
+  #### Sadly, this is currenly a bit manually intensive.
+hwfcst_mean <- allvisits_fcst$mean %>% as.vector()
+dat_allv_fcst <- data.frame(dt=seq.Date(from=max(ts_train[,"dt"] %>% as.vector() %>% {. + 1} %>% as.Date()), by=1, length.out = length(hwfcst_mean))
+           , fcst = hwfcst_mean
+           , lo95 = allvisits_fcst$lower[,2] %>% as.vector()
+           , hi95 = allvisits_fcst$upper[,2] %>% as.vector()) %>%
+  tbl_df()
+# dat_allv_fcst
+
+  #### Put observed, fitted, and forecast all into one dataframe
+# josh
+#dat_allv_fcst <- full_join(dat_allv_fcst, dat_hw_fitobs, "dt") %>%
+#  arrange(dt)
+
+dat_allv_fcst <- merge(dat_allv_fcst, dat_hw_fitobs, by = "dt", all = T)
+# end josh
+
+  #### Plot observed, fitted, and forecast
+p <- ggplot(dat_allv_fcst, aes(dt)) +
+  geom_ribbon(aes(ymin=lo95, ymax=hi95), alpha=0.3, fill="orange") +
+  geom_point(aes(y=all.visits, color="Observed")) +
+  geom_line(aes(y=fitted, color="Fitted")) +
+  geom_line(aes(y=fcst, color="Forecast")) +
+  scale_colour_manual("", 
+                        values = c("Observed"="black"
+                                   ,"Fitted"="red"
+                                   ,"Forecast"="blue")) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    strip.text.y = element_text(angle = 0)) +
+  scale_x_date(breaks=date_breaks("month")) +
+  xlab("Date") +
+  scale_y_continuous(labels=comma) +
+  ylab("all.visits") +
+  ggtitle("all.visits, Observed, Fitted, and Forecast vs. Date\nHolt-Winters\nForecast")
+print(p)
+```
+
+
+
+
+
+## Forecast sm2all
+
+To recap our strategy, we will forecast `all.visits` and `sm2all`, and then multiply the forecasts to get a forecast for `sm.visits`.  So far,
+we have `all.visits`.  Next we forecast `sm2all`.  For brevity, we will just consider the Holt-Winters models, and forecast off of that.
+
+### Forecast sm2all, Year-over-year, Holt-Winters
+
+
+```{r}
+  #### As with the linear model of last year's visits, we want the freqency here to be 364
+  #### in order to align the days of the week.
+ts_train <- ts(datv, frequency=364)
+
+  #### Create model
+sm2all_hwmod <- HoltWinters(ts_train[,5], seasonal = "multiplicative")
+
+  #### Assemble data frame of observed, fitted, and forecast
+dat_hw_sm2all_fitobs <- cbind(ts_train, fitted(sm2all_hwmod)) %>%
+  as.data.frame() %>%
+  select(dt=ts_train.dt, sm2all = ts_train.sm2all, fitted = `fitted(sm2all_hwmod).xhat`) %>%
+  mutate(dt = as.Date(dt)) %>%
+  tbl_df()
+
+  #### 90-day forecast
+sm2all_fcst <- forecast(sm2all_hwmod, h=90)
+hwfcst_sm2all_mean <- sm2all_fcst$mean %>% as.vector()
+
+dat_sm2all_fcst <- data.frame(
+           dt=seq.Date(from=max(ts_train[,"dt"] %>% as.vector() %>% {. + 1} %>% as.Date()), by=1, length.out = length(hwfcst_sm2all_mean))
+           , fcst = hwfcst_sm2all_mean
+           , lo95 = sm2all_fcst$lower[,2] %>% as.vector()
+           , hi95 = sm2all_fcst$upper[,2] %>% as.vector()) %>%
+  tbl_df()
+
+  #### Put observed, fitted, and forecast all into one dataframe
+# josh
+#dat_sm2all_fcst <- full_join(dat_sm2all_fcst, dat_hw_sm2all_fitobs, "dt") %>%
+#  arrange(dt)
+
+dat_sm2all_fcst <- merge(dat_sm2all_fcst, dat_hw_sm2all_fitobs, by = "dt", all = T)
+# end josh
+
+  #### Plot observed, fitted, and forecast
+p <- ggplot(dat_sm2all_fcst %>% filter(!is.na(fcst) | !is.na(fitted)), aes(dt)) +
+  # geom_point(aes(y=sm2all, color="Observed")) +
+  geom_line(aes(y=fitted, color="Fitted")) +
+  geom_line(aes(y=fcst, color="Forecast")) +
+  scale_colour_manual("", 
+                        values = c("Observed"="black"
+                                   ,"Fitted"="red"
+                                   ,"Forecast"="blue")) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    strip.text.y = element_text(angle = 0)) +
+  scale_x_date(breaks=date_breaks("month")) +
+  xlab("Date") +
+  scale_y_continuous(labels=comma) +
+  ylab("all.visits") +
+  ggtitle("sm2all ratio, Observed, Fitted, and Forecast vs. Date\nHolt-Winters\nForecast")
+print(p)
+```
+
+
+
+### Forecast sm2all, 7 day Holt-Winters
+
+So, if the drop due to what happened a year ago doesn't make sense, this looks at trends over the last 7 days.  This will learn its
+model parameters over the training period, but will forecast based on trends weighted more heavlily to the last 7 days of data.
+
+```{r}
+  #### Make a timeseries, set repeat frequency
+ts_train <- ts(datv, frequency=7)
+
+  #### Create model
+sm2all_hwmod <- HoltWinters(ts_train[,5], seasonal = "multiplicative")
+
+  #### Assemble data frame of observed, fitted, and forecast
+dat_hw_sm2all_fitobs <- cbind(ts_train, fitted(sm2all_hwmod)) %>%
+  as.data.frame() %>%
+  select(dt=ts_train.dt, sm2all = ts_train.sm2all, fitted = `fitted(sm2all_hwmod).xhat`) %>%
+  mutate(dt = as.Date(dt)) %>%
+  tbl_df()
+
+  #### 90-day forecast
+sm2all_fcst <- forecast(sm2all_hwmod, h=90)
+hwfcst_sm2all_mean <- sm2all_fcst$mean %>% as.vector()
+
+dat_sm2all_fcst <- data.frame(
+           dt=seq.Date(from=max(ts_train[,"dt"] %>% as.vector() %>% {. + 1} %>% as.Date()), by=1, length.out = length(hwfcst_sm2all_mean))
+           , fcst = hwfcst_sm2all_mean
+           , lo95 = sm2all_fcst$lower[,2] %>% as.vector()
+           , hi95 = sm2all_fcst$upper[,2] %>% as.vector()) %>%
+  tbl_df()
+
+  #### Put observed, fitted, and forecast all into one dataframe
+# josh
+#dat_sm2all_fcst <- full_join(dat_sm2all_fcst, dat_hw_sm2all_fitobs, "dt") %>%
+#  arrange(dt)
+
+dat_sm2all_fcst <- merge(dat_sm2all_fcst, dat_hw_sm2all_fitobs, by = "dt", all = T)
+# end josh
+
+
+  #### Plot observed, fitted, and forecast
+# p <- ggplot(dat_sm2all_fcst, aes(dt)) +
+p <- ggplot(dat_sm2all_fcst %>% filter(!is.na(fcst) | !is.na(fitted)), aes(dt)) +
+  # geom_point(aes(y=sm2all, color="Observed")) +
+  geom_line(aes(y=fitted, color="Fitted")) +
+  geom_line(aes(y=fcst, color="Forecast")) +
+  scale_colour_manual("", 
+                        values = c("Observed"="black"
+                                   ,"Fitted"="red"
+                                   ,"Forecast"="blue")) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    strip.text.y = element_text(angle = 0)) +
+  scale_x_date(breaks=date_breaks("month")) +
+  xlab("Date") +
+  scale_y_continuous(labels=comma) +
+  ylab("all.visits") +
+  ggtitle("sm2all ratio, Observed, Fitted, and Forecast vs. Date\nHolt-Winters\nForecast")
+print(p)
+```
+
+
+
+
+
+## Combine master forecast of all.visits and sm2all to predict sm.visits.
+
+```{r, eval=F}
+  #### Join the all.visits and sm2all forecasts
+dat_finall <- full_join(
+  dat_allv_fcst %>% select(dt, all.visits, fcst_allv = fcst, fitted_allv = fitted)
+  , dat_sm2all_fcst %>% select(dt, fcst_sm2all = fcst, fitted_sm2all = fitted)
+  , "dt") %>%
+  full_join(datv %>% select(dt, sm.visits), "dt") %>%
+  group_by(dt) %>%
+  mutate(sm.visits_calc = Reduce( # This picks either fitted or forecasted computation, whichever is not NA
+    function(x, y) if(!is.na(x)) x else y
+    , c(fitted_allv * fitted_sm2all, fcst_allv * fcst_sm2all))) %>%
+  ungroup()
+
+
+
+  #### Plot observed, fitted, and forecast
+p <- ggplot(dat_finall, aes(dt)) +
+  geom_point(aes(y=sm.visits, color="Observed")) +
+  geom_line(aes(y=sm.visits_calc, color="Fitted")) +
+  scale_colour_manual("", 
+                        values = c("Observed"="black"
+                                   ,"Fitted"="red")) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1),
+    strip.text.y = element_text(angle = 0)) +
+  scale_x_date(breaks=date_breaks("month")) +
+  xlab("Date") +
+  scale_y_continuous(labels=comma) +
+  ylab("all.visits") +
+  ggtitle("Predicted sm.visits, Observed, Fitted, and Forecast vs. Date\nHolt-Winters\nForecast")
+print(p)
+```
+
+Note that I don not have error bounds here.  I haven't sorted out how to make them from data combined this way, and
+I'm not sure I need to for this purpose.
+
